@@ -1,5 +1,7 @@
 # nasa-kafka
 
+[中文](README.md) | [English](README.en.md)
+
 面向 JDK 21 的多数据源 Kafka 事件运行时，统一管理应用连接多个集群时的发布、消费、历史补数与资源退出。每个源提供独立发布通道、有界有序消费、同集群消费与输出事务、持久有限回放、可恢复的单目标转发、有限 DLT 回投与原文隔离，以及可查询的健康与交付状态。
 
 内核直接使用 Kafka 原生 Java client；Spring Boot 负责命名 Bean、配置和生命周期装配。业务也可以显式构造 `KafkaProxy`，不依赖 Spring 容器。与 Rust `nasa::kafka` 共同定义事件线路、消费组身份、确认责任、事务身份和持久任务格式，让两种语言能够交换事件并接续有明确边界的处理任务。
@@ -311,6 +313,14 @@ behavior:
 `groupSlotsHealth(group)` 按固定槽号返回独立快照，`groupHealth(group)` 汇总 assignment、活动调用、保留字节和累计次数，poll 时刻取最慢槽。全部槽完成 join 且分区归属不冲突时才满足组 Ready；已 join 的空闲槽允许存在。组 epoch 记录完整槽代次向量的变化，不能当作单槽 epoch 或跨进程租约。
 
 分区 pause/resume/seek/position 先按当前归属拆分，再由实际 owner 复验；订阅变更向全部槽发送。跨槽操作没有原子性，既有整体返回接口在部分成功或开始后超时时报告 `CONTROL_OUTCOME_UNKNOWN`；需要逐目标证据时使用 `controlPartitions`。应查询各槽实际状态后收敛。重建只作用于允许恢复的槽。关闭先通知所有槽，再在共同期限内等待实际退出，未完成责任不会因等待超时而释放。
+
+### JVM 进程内保序执行
+
+普通消费由 `KafkaPollTask` 在 poll owner 上按真实 offset 选择可执行记录，`KafkaGroupBudget` 在全部 owner 槽之间原子取得组级调用名额及分区或完整 key 的顺序许可，随后通过 JDK 虚拟线程执行解码与业务。异步 listener 返回的 `CompletionStage` 必须结束，调用上下文也必须清理完成，owner 才归还许可。失败退避、DLT 交付和 null key 分区屏障都参与相同的顺序判断；重平衡使旧 Ack 失效，但不能提前释放仍在执行的旧调用。
+
+`KafkaPollTask` 内部的 `Partition` 是 Kafka assignment、输入和安全水位的状态账本，不是 `nasa-core.base.Partition` 调度器。后者按固定哈希槽和任务类型提供 FIFO 与保序任务窃取，以 `Task.exec()` 返回作为执行结束。普通消费使用前述 Kafka 顺序许可和虚拟线程执行路径：任务入队顺序、异步业务完成、失败重试与 broker 提交分别具有独立责任，不能只凭通用任务完成状态开放后续消费或推进位点。
+
+共享基础能力使用 `nasa-core` 提供的 `AnyHolder`、`RecycleLinkedMap`、`ProtocolBytes`、事件接口及相关工具。通用组件复用须同时保持顺序域、实际完成时刻、容量、故障隔离和关闭语义；业务处理器自行启动并脱离返回结果的后台工作不属于框架可等待的调用责任。
 
 ## 确认、顺序与失败责任
 
@@ -985,3 +995,5 @@ mvn -B -ntp clean verify
 ```
 
 采用 Apache-2.0 OR MIT 双许可证，详见 [LICENSE-APACHE](LICENSE-APACHE) 和 [LICENSE-MIT](LICENSE-MIT)。
+
+接入兼容性见 [CHANGELOG.md](CHANGELOG.md)，贡献、安全和发布说明分别见 [CONTRIBUTING.md](CONTRIBUTING.md)、[SECURITY.md](SECURITY.md) 与 [RELEASING.md](RELEASING.md)。中英文公开文档与许可证一同进入主 JAR、sources JAR 和 Javadoc JAR。

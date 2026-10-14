@@ -1,5 +1,7 @@
 # 发布指南
 
+[中文](RELEASING.md) | [English](RELEASING.en.md)
+
 本文说明 nasa-kafka 的公开发布条件和产物合同。已公开版本的内容不可原地替换，发布必须对应已确认的提交、版本和完整归档。
 
 ## 发布前条件
@@ -47,6 +49,8 @@ mvn -B -ntp clean verify
 ```
 
 README 首屏与独立架构章节必须解释多数据源和 lane 隔离、Java/Rust 共同合同、确认时刻、事务原子范围、有限任务恢复条件、容量及运维观测；POM description、Javadoc、示例和配置含义保持一致。构建成功不替代这些内容的核对。
+
+中英文文档的默认值、入口和失败边界必须一致。主 JAR 与 sources JAR 的 `META-INF/`、Javadoc JAR 的 `doc-files/` 均包含中英文 README、接入合同、贡献指南、安全策略、发布指南和许可证，逐个与候选文件核对。
 
 `target/` 中必须至少存在：
 

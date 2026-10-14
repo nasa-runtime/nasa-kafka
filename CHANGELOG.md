@@ -1,5 +1,7 @@
 # 兼容性与接入合同
 
+[中文](CHANGELOG.md) | [English](CHANGELOG.en.md)
+
 当前能力、配置和使用示例以 [README](README.md) 与 Javadoc 为准；源码沿革由 Git 提交记录承担。
 
 ## 依赖与入口

@@ -133,11 +133,46 @@
                     <include>LICENSE</include>
                     <include>LICENSE-APACHE</include>
                     <include>LICENSE-MIT</include>
-                    <include>README.md</include>
+                    <include>README*.md</include>
+                    <include>CHANGELOG*.md</include>
+                    <include>CONTRIBUTING*.md</include>
+                    <include>SECURITY*.md</include>
+                    <include>RELEASING*.md</include>
                 </includes>
             </resource>
         </resources>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>javadoc-public-resources</id>
+                        <phase>generate-resources</phase>
+                        <goals><goal>copy-resources</goal></goals>
+                        <configuration>
+                            <outputDirectory>${project.build.directory}/javadoc-resources/doc-files</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.basedir}</directory>
+                                    <filtering>false</filtering>
+                                    <includes>
+                                        <include>LICENSE</include>
+                                        <include>LICENSE-APACHE</include>
+                                        <include>LICENSE-MIT</include>
+                                        <include>README*.md</include>
+                                        <include>CHANGELOG*.md</include>
+                                        <include>CONTRIBUTING*.md</include>
+                                        <include>SECURITY*.md</include>
+                                        <include>RELEASING*.md</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
@@ -201,6 +236,8 @@
                 <artifactId>maven-javadoc-plugin</artifactId>
                 <version>3.12.0</version>
                 <configuration>
+                    <javadocDirectory>${project.build.directory}/javadoc-resources</javadocDirectory>
+                    <docfilessubdirs>true</docfilessubdirs>
                     <encoding>UTF-8</encoding>
                     <docencoding>UTF-8</docencoding>
                     <charset>UTF-8</charset>
