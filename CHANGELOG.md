@@ -1,40 +1,29 @@
-# 变更记录
+# 兼容性与接入合同
 
-本项目遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/)。
+当前能力、配置和使用示例以 [README](README.md) 与 Javadoc 为准；源码沿革由 Git 提交记录承担。
 
-## 1.0.0 - 未发布
+## 依赖与入口
 
-首个公开版本。从 Nasa Runtime 单体仓库拆分为独立 Maven 项目。
+Maven 坐标为 `io.github.nasa-runtime:nasa-kafka`，Java 根包与自动模块名均为 `io.github.nasaruntime.kafka`，要求 JDK 21。公共类型按 producer、consumer、transaction、checkpoint、replay 等功能包组织，具体类型路径见 README。内核直接使用 Kafka Java client，Spring Boot 提供配置与命名资源装配。接入代码须使用对应功能包的类型，不应根据父 POM 推断本组件的依赖。
 
-坐标 `io.github.nasa-runtime:nasa-kafka`。
+业务优先使用 `KafkaHandle`；`KafkaProxy` 与 `KafkaClients` 承担源资源和生命周期。多源声明固定默认源和显式来源，不按查找失败自动回退。单源与多源配置不能混用，未知字段拒绝启动。
 
-### 核心能力
+## 功能包与调用权限
 
-- **typed 监听接口**：`KafkaSingleListener` / `KafkaBatchListener` / `KafkaRecordListener` /
-  `KafkaRecordBatchListener` 四种消费粒度，按接口类型自动接线，消息按 **topic + event** 两级路由。
-- **广播消费**：`KafkaBroadcast*Listener` 为每个 JVM 实例生成独立 `group.id`，
-  用于本地缓存失效通知这类需要全实例都收到的场景。
-- **发送入口 `KafkaProxy`**：支持指定 event、key、分区、消息时间戳与自定义头。
-- **消费起点可控**：`EARLIEST` / `LATEST` / `TIMESTAMP` / `EXPLICIT`，用于回放历史或跳过积压。
-- **死信记录**：持续失败的消息进入 DLT，原始 topic、partition、offset 与失败原因写入 `X-Nasa-DLT-*` 头。
-- payload 默认走 `nasa-core` 的 `ProtocolBytes` 二进制编码，透传上下文用池化的 `RecycleLinkedMap` 承载。
+根包仅保留 `KafkaProxy`、`KafkaClients`、`KafkaHandle` 三个顶层接入类型；消费记录从 `consumer.KafkaRecord` 导入，交付结果从 `producer.Delivery` 导入，注解和装配类从 `spring` 导入。原包路径没有二进制兼容别名，调用方须更新 import、反射类名与显式 `@Import` 后重新编译。Spring Boot 自动配置通过 `io.github.nasaruntime.kafka.spring.NasaKafkaConfig` 装配。
 
-### 运行要求
+供框架功能包协作使用的公开成员不属于稳定业务 API。内部发布仍需实际来源签发并绑定任务用途的凭据；单参数 `sendBytesInternal` 与普通发送遵守相同业务准入。`ProducerLane.FlushBarrier` 是所属 lane 创建的不透明对象，不提供构造器、序号或 Future 数组访问器，调用方使用 `flush()` 等待真实交付与回执责任。
 
-- JDK 21 或更高版本，Maven 3.6.3 或更高版本。
-- 编译产物为 Java 21 字节码，低于 JDK 21 的项目无法加载。
-- 依赖 `io.github.nasa-runtime:nasa-core`，日志只依赖 `slf4j-api`。
+`@KafkaConsumer` 方法须为 public 实例方法，Bean 类可以非 public；框架在注册时验证实际代理调用权限，模块访问限制或缺少代理接口方法时以 `CONFIG` 拒绝。已有 AOP 调用链保持生效。
 
-### 许可
+## 身份、线路与恢复
 
-采用 `Apache-2.0 OR MIT` 双许可证，使用方可任选其一。
+- group 决定消费责任和位点归属，合法名称使用严格 UTF-8 原文；不满足共同输入域时须显式规划迁移，不能裁剪、替换或自行复制位点。
+- `X-Nasa-Event`、`X-Nasa-Payload-Codec`、`X-Nasa-Payload-Mode`、`X-Nasa-Passthrough` 和 DLT 来源头属于线路合同。event 不归一化，null/空 key、tombstone 和有序重复 header 保持区别。
+- JSON 与 ProtocolBytes 是明确选择的编码路径，不能仅凭 Java DTO 名称推断对端编解码能力。schema、codec 和 mode 不匹配时按输入策略处理。
+- 普通 Auto/Manual 确认只能推进当前代次的连续安全前缀；重投可能重复外部副作用，业务须按稳定身份保证幂等。
+- Kafka 事务恢复复用稳定部署身份；有限回放、转发与 DLT 回投还须保留计划、物理资源身份和有效 checkpoint。Kafka 事务不覆盖数据库或其它集群。
 
-### 从 Nasa Runtime 内嵌版本迁移
+## 配置转换与滚动部署
 
-以下变化仅对原本在 Nasa Runtime 单体仓库中使用这些类的调用方有意义：
-
-- **包名**由 `com.nasa.runtime.kafka` 变为 `io.github.nasaruntime.kafka`，`Automatic-Module-Name` 同步为 `io.github.nasaruntime.kafka`。
-- **依赖不再经单体父 POM 传递**，全部在本项目显式声明并锁定版本。
-- **线路契约**：`X-Nasa-Event`、`X-Nasa-Payload-Codec`、`X-Nasa-Payload-Mode`、`X-Nasa-Passthrough`
-  与 `X-Nasa-DLT-*` 一经发布即为跨版本契约，修改会导致新旧消费方互不兼容。
-- **失败语义**：`onEvent` 抛异常即不 ACK，消息会被重投，业务逻辑必须幂等。
+使用 [配置迁移入口](README.md#配置迁移与滚动部署) 取得候选和人工决策项；该操作不改配置文件或 broker 位点。部署前明确可靠发送、输入容量、错误策略、Admin 写授权和 Ready 要求。只替换二进制不会撤销已提交的业务事实，回退仍须能读取已有线路和持久格式。
